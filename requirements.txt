@@ -1,0 +1,39 @@
+# --- API framework ---
+fastapi
+uvicorn[standard]
+
+# --- validation / config ---
+pydantic
+pydantic-settings
+
+# --- agent framework ---
+crewai
+crewai-tools
+
+# --- LLM providers ---
+groq
+google-generativeai
+langchain_gemini
+langchain_core
+
+# --- GitHub API access ---
+httpx
+
+# --- Docker control (container status, logs, restart) ---
+docker
+
+# --- database ---
+sqlalchemy
+psycopg2-binary
+
+# --- credential encryption ---
+cryptography
+
+# --- alerting ---
+requests
+
+# --- frontend ---
+streamlit
+
+# --- testing ---
+pytest

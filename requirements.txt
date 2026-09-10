@@ -13,8 +13,10 @@ crewai-tools
 # --- LLM providers ---
 groq
 google-generativeai
+openai
 langchain_gemini
 langchain_core
+langchain-google-genai
 
 # --- GitHub API access ---
 httpx

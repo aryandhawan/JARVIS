@@ -5,9 +5,11 @@ from fastapi import FastAPI,Request
 from pydantic import BaseModel,Field
 from datetime import datetime
 from openai import AsyncOpenAI
-from jarvis.crew import Jarvis
+from jarvis.crew import Jarvis,run_routine_check
+from jarvis.config.projects import resolve_project_repo
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -89,13 +91,57 @@ async def chat(request: ChatRequest):
 
     previous_messages = chat_history.get(request.conversation_id, [])
 
-    
+    if 'fire up the arc' in user_message.strip().lower():
+        try:
+            conversation = previous_messages
+            extraction_response = await client.chat.completions.create(
+            model="gemini-3.8-flash",
+            messages=[
+                {"role": "system", "content": (
+                    "Extract from this conversation exactly two things: "
+                    "the project name being discussed, and a clear, "
+                    "one-paragraph statement of what the user wants "
+                    "investigated or done. Respond ONLY as JSON: "
+                    '{"project_name": "...", "request_or_observation": "..."}'
+                )},
+                {"role": "user", "content": "\n".join(
+                    f"{m['role']}: {m['content']}" for m in conversation
+                )},
+            ],
+    )
+            try:
+                extracted = json.loads(extraction_response.choices[0].message.content)
+                project_name = extracted["project_name"]
+                request_or_observation = extracted["request_or_observation"]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                return {"error": "Could not extract project name and request from the conversation. Please restate what you want investigated."}
+
+            result = await run_with_trigger(
+                project_name=project_name,
+                request_or_observation=request_or_observation,
+            )
+        except Exception as e:
+            return {"error": str(e)}
+
+        chat_history[request.conversation_id] = previous_messages + [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": f"Fired up the arc. Result: {result}"},
+        ]
+        return {"message": "Fired up the arc.", "result": result}
+
+    if 'do a routine check' in user_message.strip().lower():
+        try:
+            result=await run_routine_check(repo_list=['aryandhawan/Lucid'])
+            return {"message": "Routine check completed.", "result": result}
+        except Exception as e:
+            return {"Error":str(e)}
+
     messages = [{"role": "system", "content": JARVIS_CHAT_SYSTEM_PROMPT}] \
-        + previous_messages \
+    + previous_messages \
         + [{"role": "user", "content": user_message}]
 
     response = await client.chat.completions.create(
-        model="gemini-3.8-flash",
+        model="gemini-2.5-flash",
         messages=messages,
     )
     reply_text = response.choices[0].message.content
@@ -106,16 +152,10 @@ async def chat(request: ChatRequest):
         {"role": "assistant", "content": reply_text},
     ]
 
-    if user_message.strip().lower() == "fire up the arc":
-        try:
-            result = run_with_trigger(inputs={
-                "crewai_trigger_payload": chat_history[request.conversation_id]
-            })
-            return {"message": "JARVIS has engaged and executed the task.", "result": result}
-        except Exception as e:
-            return {"error": str(e)}
-
+            
     return {"message": reply_text}
+
+    
 
 def run():
     """
@@ -127,7 +167,7 @@ def run():
     }
 
     try:
-        Jarvis().crew().kickoff(inputs=inputs)
+        Jarvis().crew().kickoff_async(inputs=inputs)
     except Exception as e:
         raise Exception(f"An error occurred while running the crew: {e}")
 
@@ -171,28 +211,23 @@ def test():
     except Exception as e:
         raise Exception(f"An error occurred while testing the crew: {e}")
 
-def run_with_trigger():
+async def run_with_trigger(project_name: str, request_or_observation: str):
     """
     Run the crew with trigger payload.
     """
-    import json
+    jarvis = Jarvis()
 
-    if len(sys.argv) < 2:
-        raise Exception("No trigger payload provided. Please provide JSON payload as argument.")
-
-    try:
-        trigger_payload = json.loads(sys.argv[1])
-    except json.JSONDecodeError:
-        raise Exception("Invalid JSON payload provided as argument")
+    repo = resolve_project_repo(project_name)
 
     inputs = {
-        "crewai_trigger_payload": trigger_payload,
-        "topic": "",
-        "current_year": ""
+        "project_name": project_name,
+        "request_or_observation": request_or_observation,
+        "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "repo_owner": repo["owner"],
+        "repo_name": repo["repo"],
     }
-
     try:
-        result = Jarvis().crew().kickoff(inputs=inputs)
-        return result
+        result = await jarvis.crew().kickoff_async(inputs=inputs)
+        return result.raw
     except Exception as e:
         raise Exception(f"An error occurred while running the crew with trigger: {e}")

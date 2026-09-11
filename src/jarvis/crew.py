@@ -11,6 +11,13 @@ class JudgementDecision(BaseModel):
     files: list[str] = Field(default_factory=list, max_length=2)
     instruction: str = ""
 
+from crewai import LLM
+
+gemini_llm = LLM(
+    model="gemini/gemini-2.5-flash",   # CrewAI's LiteLLM-style provider prefix
+    api_key=os.getenv("GEMINI_API_KEY"),
+)
+
 @CrewBase
 class Jarvis():
     """Jarvis crew"""
@@ -24,6 +31,7 @@ class Jarvis():
             config=self.agents_config['Judgement_agent' ], # type: ignore[index]
             tools=[github_read_tool],
             verbose=True,
+            llm=gemini_llm
         )
 
     @agent
@@ -32,7 +40,8 @@ class Jarvis():
             config=self.agents_config['maintainence_agent'], # type: ignore[index]
             verbose=True,
             mcps=["https://mcp.context7.com/mcp"],
-            tools=[git_sha_token,github_write_tool,create_git_branch,create_pull_request,restart_container,get_container_logs,check_container_status]
+            tools=[git_sha_token,github_write_tool,create_git_branch,create_pull_request,restart_container,get_container_logs,check_container_status],
+            llm=gemini_llm
         )
 
     @task
@@ -60,15 +69,15 @@ class Jarvis():
     def crew(self) -> Crew:
         """Creates the Jarvis crew"""
         return Crew(
-            agents=self.agents,
-            tasks=self.tasks,
+            agents=[self.judgement_agent(), self.maintainence_agent()],
+            tasks=[self.investigate_and_judge_task(), self.execute_change_task()],
             process=Process.sequential,
             verbose=True,
             tracing=True
         )
 
     
-def run_routine_check(repo_list: list[str]):
+async def run_routine_check(repo_list: list[str]):
     jarvis = Jarvis()
     tasks = [jarvis.routine_check_task()]
 
@@ -77,5 +86,5 @@ def run_routine_check(repo_list: list[str]):
         tasks=tasks,
         process=Process.sequential,
     )
-    result = routine_crew.kickoff(inputs={"repo_list": ", ".join(repo_list)})
+    result = await routine_crew.kickoff_async(inputs={"repo_list": ", ".join(repo_list)})
     return result.raw

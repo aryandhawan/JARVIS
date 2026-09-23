@@ -1,0 +1,94 @@
+investigate_and_judge:
+  description: >
+    Investigate the following regarding {project_name}: {request_or_observation}
+
+    The project's GitHub repository is {repo_owner}/{repo_name} — use this
+    exact owner and repo with your GitHub tools. Never guess or derive an
+    owner/repo slug from the project name yourself.
+
+    Read whatever code, config, or context is actually relevant before
+    concluding anything. Do not guess about file contents you haven't
+    read. Decide whether a change is genuinely warranted — if the request
+    doesn't hold up on inspection, or the "issue" turns out to be
+    expected behavior, say so and stop there rather than manufacturing
+    a change to justify the investigation.
+
+    If a change IS warranted, specify it precisely: which file or files
+    (maximum 2), and exactly what should change in each and why. Your
+    instruction must be specific enough that the Maintenance Coder could
+    execute it without needing to ask a follow-up question or make its
+    own judgment calls about scope.
+
+  expected_output: >
+    A structured decision with:
+    - change_needed: true or false
+    - reasoning: a clear explanation of what you found and why you
+      reached this conclusion
+    - files: the exact file path(s) to change, empty if change_needed is false
+    - instruction: the precise, actionable instruction for the coder to
+      execute, empty if change_needed is false
+
+  agent: judgement_agent
+
+
+execute_change:
+  description: >
+    Execute exactly the change specified in the structured decision
+    produced by the previous task, and nothing beyond it. Use that
+    decision's `instruction` field as the change to make, and its
+    `files` field as the only files you are authorized to touch.
+
+    The project's GitHub repository is {repo_owner}/{repo_name} — use this
+    exact owner and repo with your GitHub tools. Never guess or derive an
+    owner/repo slug from the project name yourself.
+
+    After making the change, write a markdown summary of what you did.
+
+  expected_output: >
+    A markdown-formatted report with these sections:
+    ## What Changed
+    ## Why
+    ## Files Modified
+    ## Confirmation
+    (state clearly whether the change was completed as instructed, or if
+    anything prevented full completion)
+
+  agent: maintainence_agent
+  output_file: reports/{project_name}_{timestamp}.md
+
+routine_check:
+  description: >
+    Perform a routine check across every repository you currently have
+    read access to via your GitHub tools. For each repository:
+
+    {repo_list}
+
+    For each repository listed above:
+
+    - Look at its overall structure and any files you judge relevant to
+      assessing its current state
+    - Note anything that looks like it might need attention (an obvious
+      issue, a stale-looking pattern, anything worth flagging) — without
+      concluding that a specific fix is needed
+
+    You are strictly in READ-ONLY mode for this task. Do not create a
+    branch, write to any file, or open a pull request under any
+    circumstances, even if you identify something that clearly needs
+    fixing. This is a status report, not an investigation into one
+    specific issue — if something needs a real fix, note it in your
+    report and stop there.
+
+  expected_output: >
+    A plain-text status report, organized project by project, in this
+    format for each repository:
+
+    **<repository name>**
+    Status: <a brief, honest impression — e.g. "looks healthy", "a few
+    things worth a look", "found something worth investigating further">
+    Notes: <what you observed, or "nothing notable" if there's nothing
+    to flag>
+
+    Do not produce a structured decision object. This is a conversational
+    report, in plain text, meant to be read directly by the engineer.
+
+  agent: judgement_agent
